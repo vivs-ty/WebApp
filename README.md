@@ -1,97 +1,99 @@
-# Flask Project Showcase
+# Flask Web App
 
-A modern web application built with Flask that showcases various projects in a clean, responsive interface. The application displays a collection of projects in a card-based layout, making it easy to browse and view project details.
+Simple Flask application that showcases project cards with search, category filtering, modal details, a contact form, and light/dark theme toggling.
 
 ## Features
 
-- Responsive card-based grid layout for project display
-- Bootstrap-powered modern UI design
-- Dynamic project data integration
-- About page with additional information
-- Clean and organized template structure using Jinja2
-- Mobile-friendly interface
+- Project listing with search and category filter
+- JSON endpoint for item details
+- Contact form with server-side validation and flash messages
+- Theme toggle persisted in session
+- Responsive Bootstrap UI
+- Unit tests with pytest
+- GitHub Actions CI (lint + startup check + tests)
 
 ## Tech Stack
 
 - Python 3.10+
 - Flask 3.0.0
 - Werkzeug 3.0.1
-- Bootstrap (for responsive design)
-- HTML5/CSS3
-- Jinja2 templating
+- Bootstrap 5
+- Jinja2
+- pytest
 
 ## Project Structure
 
-```
-pywebapplication/
+~~~text
+WebApp/
 ├── .github/
-│   └── workflows/        # GitHub Actions workflows
+│   └── workflows/
+│       └── python-app.yml
 ├── templates/
-│   ├── base.html        # Base template with common layout
-│   ├── index.html       # Home page with project cards
-│   └── about.html       # About page template
-├── app.py              # Main Flask application file
-├── requirements.txt    # Python dependencies
-└── README.md          # Project documentation
-```
+│   ├── base.html
+│   ├── index.html
+│   ├── about.html
+│   └── contact.html
+├── tests/
+│   └── test_app.py
+├── app.py
+├── requirements.txt
+└── README.md
+~~~
 
-## Getting Started
+## Run Locally
 
-### Prerequisites
+1. Create and activate a virtual environment.
 
-- Python 3.10 or higher
-- pip (Python package installer)
+~~~bash
+python -m venv .venv
+source .venv/bin/activate
+~~~
 
-### Installation
+2. Install dependencies.
 
-1. Clone the repository:
-```bash
-git clone <your-repository-url>
-cd pywebapplication
-```
-
-2. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
+~~~bash
 pip install -r requirements.txt
-```
+~~~
 
-### Running the Application
+3. Start the app.
 
-1. Start the Flask development server:
-```bash
+~~~bash
 python app.py
-```
+~~~
 
-2. Open your web browser and navigate to:
-```
-http://localhost:5000
-```
+4. Open http://localhost:5000
 
-The application will display a grid of project cards on the home page and provide navigation to an about page.
+## Environment Variables
 
-## Development
+- SECRET_KEY: Recommended for stable session security in development/production.
+- FLASK_DEBUG: Set to 1 to enable Flask debug mode.
 
-The application uses GitHub Actions for CI/CD pipeline, which includes:
-- Code quality checks with flake8
-- Python syntax verification
-- Automated testing of application startup
-- Dependency installation verification
+Example:
 
-## Contributing
+~~~bash
+export SECRET_KEY="change-me"
+export FLASK_DEBUG=1
+python app.py
+~~~
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## Testing
+
+Run tests:
+
+~~~bash
+pytest -q
+~~~
+
+## CI Pipeline
+
+GitHub Actions workflow runs on push/pull request to main and includes:
+
+- Dependency installation
+- flake8 lint checks
+- App startup smoke test
+- pytest test suite
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License. See LICENSE.
 

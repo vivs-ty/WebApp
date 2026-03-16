@@ -1,0 +1,565 @@
+diff --git a/.github/workflows/python-app.yml b/.github/workflows/python-app.yml
+index eaa50ec..ee0500b 100644
+--- a/.github/workflows/python-app.yml
++++ b/.github/workflows/python-app.yml
+@@ -16,10 +16,10 @@ jobs:
+     steps:
+     - uses: actions/checkout@v4
+     
+-    - name: Set up Python 3.10
++    - name: Set up Python 3.12
+       uses: actions/setup-python@v4
+       with:
+-        python-version: "3.10"
++        python-version: "3.12"
+     
+     - name: Install dependencies
+       run: |
+@@ -37,3 +37,7 @@ jobs:
+     - name: Test application startup
+       run: |
+         python -c "from app import app; assert app is not None"
++
++    - name: Run unit tests
++      run: |
++        pytest -q
+diff --git a/README.md b/README.md
+index 30f1de1..7b0e980 100644
+--- a/README.md
++++ b/README.md
+@@ -1,97 +1,99 @@
+-# Flask Project Showcase
++# Flask Web App
+ 
+-A modern web application built with Flask that showcases various projects in a clean, responsive interface. The application displays a collection of projects in a card-based layout, making it easy to browse and view project details.
++Simple Flask application that showcases project cards with search, category filtering, modal details, a contact form, and light/dark theme toggling.
+ 
+ ## Features
+ 
+-- Responsive card-based grid layout for project display
+-- Bootstrap-powered modern UI design
+-- Dynamic project data integration
+-- About page with additional information
+-- Clean and organized template structure using Jinja2
+-- Mobile-friendly interface
++- Project listing with search and category filter
++- JSON endpoint for item details
++- Contact form with server-side validation and flash messages
++- Theme toggle persisted in session
++- Responsive Bootstrap UI
++- Unit tests with pytest
++- GitHub Actions CI (lint + startup check + tests)
+ 
+ ## Tech Stack
+ 
+ - Python 3.10+
+ - Flask 3.0.0
+ - Werkzeug 3.0.1
+-- Bootstrap (for responsive design)
+-- HTML5/CSS3
+-- Jinja2 templating
++- Bootstrap 5
++- Jinja2
++- pytest
+ 
+ ## Project Structure
+ 
+-```
+-pywebapplication/
++~~~text
++WebApp/
+ ├── .github/
+-│   └── workflows/        # GitHub Actions workflows
++│   └── workflows/
++│       └── python-app.yml
+ ├── templates/
+-│   ├── base.html        # Base template with common layout
+-│   ├── index.html       # Home page with project cards
+-│   └── about.html       # About page template
+-├── app.py              # Main Flask application file
+-├── requirements.txt    # Python dependencies
+-└── README.md          # Project documentation
+-```
++│   ├── base.html
++│   ├── index.html
++│   ├── about.html
++│   └── contact.html
++├── tests/
++│   └── test_app.py
++├── app.py
++├── requirements.txt
++└── README.md
++~~~
+ 
+-## Getting Started
++## Run Locally
+ 
+-### Prerequisites
++1. Create and activate a virtual environment.
+ 
+-- Python 3.10 or higher
+-- pip (Python package installer)
++~~~bash
++python -m venv .venv
++source .venv/bin/activate
++~~~
+ 
+-### Installation
++2. Install dependencies.
+ 
+-1. Clone the repository:
+-```bash
+-git clone <your-repository-url>
+-cd pywebapplication
+-```
++~~~bash
++pip install -r requirements.txt
++~~~
+ 
+-2. Create a virtual environment (recommended):
+-```bash
+-python -m venv venv
+-source venv/bin/activate  # On Windows: venv\Scripts\activate
+-```
++3. Start the app.
+ 
+-3. Install dependencies:
+-```bash
+-pip install -r requirements.txt
+-```
++~~~bash
++python app.py
++~~~
++
++4. Open http://localhost:5000
++
++## Environment Variables
++
++- SECRET_KEY: Recommended for stable session security in development/production.
++- FLASK_DEBUG: Set to 1 to enable Flask debug mode.
+ 
+-### Running the Application
++Example:
+ 
+-1. Start the Flask development server:
+-```bash
++~~~bash
++export SECRET_KEY="change-me"
++export FLASK_DEBUG=1
+ python app.py
+-```
++~~~
+ 
+-2. Open your web browser and navigate to:
+-```
+-http://localhost:5000
+-```
++## Testing
+ 
+-The application will display a grid of project cards on the home page and provide navigation to an about page.
++Run tests:
+ 
+-## Development
++~~~bash
++pytest -q
++~~~
+ 
+-The application uses GitHub Actions for CI/CD pipeline, which includes:
+-- Code quality checks with flake8
+-- Python syntax verification
+-- Automated testing of application startup
+-- Dependency installation verification
++## CI Pipeline
+ 
+-## Contributing
++GitHub Actions workflow runs on push/pull request to main and includes:
+ 
+-1. Fork the repository
+-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+-4. Push to the branch (`git push origin feature/AmazingFeature`)
+-5. Open a Pull Request
++- Dependency installation
++- flake8 lint checks
++- App startup smoke test
++- pytest test suite
+ 
+ ## License
+ 
+-This project is licensed under the MIT License - see the LICENSE file for details.
++MIT License. See LICENSE.
+ 
+diff --git a/app.py b/app.py
+index 9dfe3dc..e8ebfdc 100644
+--- a/app.py
++++ b/app.py
+@@ -1,8 +1,11 @@
+-from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
+-import datetime
++import os
++import re
++import secrets
++
++from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+ 
+ app = Flask(__name__)
+-app.secret_key = 'your-secret-key-here'  # Required for flash messages
++app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', secrets.token_hex(32))
+ 
+ # Sample data - in a real app, this would typically come from a database
+ items = [
+@@ -148,19 +151,39 @@ items = [
+     }
+ ]
+ 
++EMAIL_REGEX = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
++VALID_THEMES = {'light', 'dark'}
++
++
++def get_categories():
++    return sorted({item['category'] for item in items})
++
++
++def is_valid_email(email):
++    return bool(EMAIL_REGEX.match(email))
++
+ @app.route('/')
+ def home():
+-    search_query = request.args.get('search', '').lower()
+-    category_filter = request.args.get('category', '')
+-    
++    search_query = request.args.get('search', '').strip().lower()
++    category_filter = request.args.get('category', '').strip()
++
+     filtered_items = items
+     if search_query:
+-        filtered_items = [item for item in items if search_query in item['title'].lower() or search_query in item['description'].lower()]
+-    if category_filter:
++        filtered_items = [
++            item for item in filtered_items
++            if search_query in item['title'].lower() or search_query in item['description'].lower()
++        ]
++
++    categories = get_categories()
++    if category_filter in categories:
+         filtered_items = [item for item in filtered_items if item['category'] == category_filter]
+-    
+-    categories = sorted(list(set(item['category'] for item in items)))
+-    return render_template('index.html', items=filtered_items, categories=categories)
++
++    return render_template(
++        'index.html',
++        items=filtered_items,
++        categories=categories,
++        current_theme=session.get('theme', 'light')
++    )
+ 
+ @app.route('/item/<int:item_id>')
+ def item_details(item_id):
+@@ -171,29 +194,39 @@ def item_details(item_id):
+ 
+ @app.route('/about')
+ def about():
+-    return render_template('about.html')
++    return render_template('about.html', current_theme=session.get('theme', 'light'))
+ 
+ @app.route('/contact', methods=['GET', 'POST'])
+ def contact():
+     if request.method == 'POST':
+-        name = request.form.get('name')
+-        email = request.form.get('email')
+-        message = request.form.get('message')
+-        
++        name = request.form.get('name', '').strip()
++        email = request.form.get('email', '').strip()
++        message = request.form.get('message', '').strip()
++
+         if not all([name, email, message]):
+-            flash('Please fill in all fields', 'error')
++            flash('Please fill in all fields.', 'error')
++        elif not is_valid_email(email):
++            flash('Please enter a valid email address.', 'error')
++        elif len(message) < 10:
++            flash('Message should be at least 10 characters long.', 'error')
+         else:
+             # In a real application, you would process the form data here
+             flash('Thank you for your message! We will get back to you soon.', 'success')
+             return redirect(url_for('contact'))
+-    
+-    return render_template('contact.html')
++
++    return render_template('contact.html', current_theme=session.get('theme', 'light'))
+ 
+ @app.route('/toggle-theme', methods=['POST'])
+ def toggle_theme():
+-    theme = request.json.get('theme')
+-    # In a real application, you would save this preference to a database or session
++    payload = request.get_json(silent=True) or {}
++    theme = payload.get('theme')
++
++    if theme not in VALID_THEMES:
++        return jsonify({'status': 'error', 'message': 'Invalid theme'}), 400
++
++    session['theme'] = theme
+     return jsonify({'status': 'success', 'theme': theme})
+ 
+ if __name__ == '__main__':
+-    app.run(debug=True)
++    debug_mode = os.getenv('FLASK_DEBUG', '0') == '1'
++    app.run(debug=debug_mode)
+diff --git a/requirements.txt b/requirements.txt
+index c1933a9..d2e53bd 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,3 +1,4 @@
+ Flask==3.0.0
+ Werkzeug==3.0.1
++pytest==8.3.5
+ 
+diff --git a/templates/base.html b/templates/base.html
+index 87198c3..73cd684 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en" data-bs-theme="light">
++<html lang="en" data-bs-theme="{{ current_theme|default('light') }}">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+@@ -9,7 +9,7 @@
+     <style>
+         .card {
+             margin-bottom: 20px;
+-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
++            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+             transition: transform 0.2s;
+         }
+         .card:hover {
+@@ -36,36 +36,26 @@
+ <body>
+     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+         <div class="container">
+-            <a class="navbar-brand" href="/">Web App</a>
+-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
++            <a class="navbar-brand" href="{{ url_for('home') }}">Web App</a>
++            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                 <span class="navbar-toggler-icon"></span>
+             </button>
+             <div class="collapse navbar-collapse" id="navbarNav">
+                 <ul class="navbar-nav me-auto">
+-
+-                    <li class="nav-item">
+-                        <a class="nav-link" href="/"><i class="bi bi-house-door"></i> Home</a>
+-                    </li>
+-                    <li class="nav-item">
+-                        <a class="nav-link" href="/about"><i class="bi bi-info-circle"></i> About</a>
+-                    </li>
+-                    <li class="nav-item">
+-
+                     <li class="nav-item">
+-                        <a class="nav-link" href="/"><i class="bi bi-house-door"></i> Home</a>
++                        <a class="nav-link" href="{{ url_for('home') }}"><i class="bi bi-house-door"></i> Home</a>
+                     </li>
+                     <li class="nav-item">
+-                        <a class="nav-link" href="/about"><i class="bi bi-info-circle"></i> About</a>
++                        <a class="nav-link" href="{{ url_for('about') }}"><i class="bi bi-info-circle"></i> About</a>
+                     </li>
+                     <li class="nav-item">
+-
+-                        <a class="nav-link" href="/contact"><i class="bi bi-envelope"></i> Contact</a>
++                        <a class="nav-link" href="{{ url_for('contact') }}"><i class="bi bi-envelope"></i> Contact</a>
+                     </li>
+                 </ul>
+                 <div class="d-flex align-items-center">
+-                    <div class="theme-toggle text-white" onclick="toggleTheme()">
+-                        <i class="bi bi-moon-stars"></i>
+-                    </div>
++                    <button type="button" class="theme-toggle text-white btn btn-link" onclick="toggleTheme()" aria-label="Toggle theme">
++                        <i class="bi {{ 'bi-sun' if (current_theme|default('light')) == 'dark' else 'bi-moon-stars' }}"></i>
++                    </button>
+                 </div>
+             </div>
+         </div>
+@@ -85,7 +75,6 @@
+         {% block content %}{% endblock %}
+     </div>
+ 
+-
+     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+     <script>
+         function toggleTheme() {
+@@ -93,16 +82,23 @@
+             const currentTheme = html.getAttribute('data-bs-theme');
+             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+             html.setAttribute('data-bs-theme', newTheme);
+-            
++
+             const icon = document.querySelector('.theme-toggle i');
+             icon.className = newTheme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+-            
+-            fetch('/toggle-theme', {
++
++            fetch("{{ url_for('toggle_theme') }}", {
+                 method: 'POST',
+                 headers: {
+-                    'Content-Type': 'application/json',
++                    'Content-Type': 'application/json'
+                 },
+                 body: JSON.stringify({ theme: newTheme })
++            }).then((response) => {
++                if (!response.ok) {
++                    throw new Error('Theme update failed');
++                }
++            }).catch(() => {
++                html.setAttribute('data-bs-theme', currentTheme);
++                icon.className = currentTheme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+             });
+         }
+     </script>
+diff --git a/templates/contact.html b/templates/contact.html
+index 1faaf86..ca86979 100644
+--- a/templates/contact.html
++++ b/templates/contact.html
+@@ -11,15 +11,15 @@
+                 <form method="post">
+                     <div class="mb-3">
+                         <label for="name" class="form-label">Name</label>
+-                        <input type="text" class="form-control" id="name" name="name" required>
++                        <input type="text" class="form-control" id="name" name="name" value="{{ request.form.get('name', '') }}" required>
+                     </div>
+                     <div class="mb-3">
+                         <label for="email" class="form-label">Email</label>
+-                        <input type="email" class="form-control" id="email" name="email" required>
++                        <input type="email" class="form-control" id="email" name="email" value="{{ request.form.get('email', '') }}" required>
+                     </div>
+                     <div class="mb-3">
+                         <label for="message" class="form-label">Message</label>
+-                        <textarea class="form-control" id="message" name="message" rows="5" required></textarea>
++                        <textarea class="form-control" id="message" name="message" rows="5" minlength="10" required>{{ request.form.get('message', '') }}</textarea>
+                     </div>
+                     <button type="submit" class="btn btn-primary">Send Message</button>
+                 </form>
+diff --git a/templates/index.html b/templates/index.html
+index 00f0222..6078a45 100644
+--- a/templates/index.html
++++ b/templates/index.html
+@@ -14,9 +14,9 @@
+                 {{ request.args.get('category', 'All Categories') }}
+             </button>
+             <ul class="dropdown-menu">
+-                <li><a class="dropdown-item" href="/">All Categories</a></li>
++                <li><a class="dropdown-item" href="{{ url_for('home', search=request.args.get('search', '')) }}">All Categories</a></li>
+                 {% for category in categories %}
+-                <li><a class="dropdown-item" href="?category={{ category }}{% if request.args.get('search') %}&search={{ request.args.get('search') }}{% endif %}">{{ category }}</a></li>
++                <li><a class="dropdown-item" href="{{ url_for('home', category=category, search=request.args.get('search', '')) }}">{{ category }}</a></li>
+                 {% endfor %}
+             </ul>
+         </div>
+@@ -26,7 +26,7 @@
+ <div class="row">
+     {% for item in items %}
+     <div class="col-md-4">
+-        <div class="card h-100" onclick="showItemDetails({{ item.id }})">
++        <div class="card h-100" role="button" tabindex="0" onclick="showItemDetails({{ item.id }})" onkeydown="if(event.key === 'Enter' || event.key === ' '){ showItemDetails({{ item.id }}); }">
+             <div class="card-body">
+                 <h5 class="card-title">{{ item.title }}</h5>
+                 <p class="card-text">{{ item.description }}</p>
+@@ -40,6 +40,12 @@
+     {% endfor %}
+ </div>
+ 
++{% if not items %}
++<div class="alert alert-info mt-3" role="alert">
++    No projects matched your search/filter criteria.
++</div>
++{% endif %}
++
+ <!-- Item Details Modal -->
+ <div class="modal fade" id="itemModal" tabindex="-1">
+     <div class="modal-dialog">
+@@ -66,14 +72,22 @@ document.addEventListener('DOMContentLoaded', function() {
+ });
+ 
+ function showItemDetails(itemId) {
+-    fetch(`/item/${itemId}`)
+-        .then(response => response.json())
++    fetch(`{{ url_for('item_details', item_id=0) }}`.replace('0', String(itemId)))
++        .then(response => {
++            if (!response.ok) {
++                throw new Error('Unable to fetch item details.');
++            }
++            return response.json();
++        })
+         .then(item => {
+             document.querySelector('#itemModal .modal-title').textContent = item.title;
+             document.getElementById('itemDescription').textContent = item.description;
+             document.getElementById('itemCategory').textContent = item.category;
+             document.getElementById('itemDate').textContent = item.date;
+             itemModal.show();
++        })
++        .catch(() => {
++            alert('Unable to load item details right now. Please try again.');
+         });
+ }
+ </script>
+diff --git a/tests/test_app.py b/tests/test_app.py
+new file mode 100644
+index 0000000..c0308ca
+--- /dev/null
++++ b/tests/test_app.py
+@@ -0,0 +1,54 @@
++from pathlib import Path
++import sys
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from app import app
++
++
++def test_home_page_loads():
++    client = app.test_client()
++    response = client.get('/')
++    assert response.status_code == 200
++    assert b'Project Alpha' in response.data
++
++
++def test_item_details_success():
++    client = app.test_client()
++    response = client.get('/item/1')
++    assert response.status_code == 200
++    payload = response.get_json()
++    assert payload['id'] == 1
++    assert payload['title'] == 'Project Alpha'
++
++
++def test_item_details_not_found():
++    client = app.test_client()
++    response = client.get('/item/999')
++    assert response.status_code == 404
++    payload = response.get_json()
++    assert payload['error'] == 'Item not found'
++
++
++def test_contact_validation_errors():
++    client = app.test_client()
++    response = client.post(
++        '/contact',
++        data={'name': 'A', 'email': 'bad-email', 'message': 'short'},
++        follow_redirects=True,
++    )
++    assert response.status_code == 200
++    assert b'Please enter a valid email address.' in response.data
++
++
++def test_toggle_theme_validation_and_success():
++    client = app.test_client()
++
++    invalid_response = client.post('/toggle-theme', json={'theme': 'blue'})
++    assert invalid_response.status_code == 400
++
++    valid_response = client.post('/toggle-theme', json={'theme': 'dark'})
++    assert valid_response.status_code == 200
++    payload = valid_response.get_json()
++    assert payload['status'] == 'success'
++    assert payload['theme'] == 'dark'
